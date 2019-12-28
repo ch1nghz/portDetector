@@ -17,9 +17,9 @@ initialScan(){
 for ip in $(cat $ip_addresses)
 
 do
-        mkdir $ip > /dev/null 2>&1
-        echo -e "${GREEN}[+] Initial Scaning on $ip [+]"
-        nmap -p 1-65535 $ip --min-parallelism 100 -sS -sU -T4 -n --open -oN $ip/$ip.Full.txt > /dev/null
+	mkdir $ip > /dev/null 2>&1
+	echo -e "${GREEN}[+] Initial Scaning on $ip [+]"
+	nmap -p 1-65535 $ip --max-retries 1 -T4 -v --open -oN $ip/$ip.initial.Full.txt > /dev/null &
 done
 
 }
@@ -28,15 +28,23 @@ postScan(){
 
 for ip in $(cat $ip_addresses)
 do
-        declare hash1=$(cat $ip/$ip.Full.txt | grep -E '/tcp|/udp' | md5sum | cut -d " " -f1)
-        echo -e "${GREEN}[+] Secondary Scanning on $ip... [+]"
-        initialPorts=$(cat $ip/$ip.Full.txt | grep -E '/tcp|/udp' | cut -d "/" -f1 | tr '\n' ',' | sed 's/.$//')
-        nmap -p 1-65535 $ip --min-parallelism 100 -sS -sU -T4 -n --open -oN $ip/$ip.Full.txt > /dev/null
-        declare hash2=$(cat $ip/$ip.Full.txt | grep -E '/tcp|/udp' | md5sum | cut -d " " -f1)
-        postPorts=$(cat $ip/$ip.Full.txt | grep -E '/tcp|/udp' | cut -d "/" -f1 | tr '\n' ',' | sed 's/.$//')
+	echo -e "${GREEN}[+] Secondary Scanning on $ip... [+]"
+	nmap -p 1-65535 $ip --max-retries 1 -T4 -v --open -oN $ip/$ip.post.Full.txt > /dev/null &
+done
+}
+
+compare(){
+
+for ip in $(cat $ip_addresses)
+do
+	echo -e "${GREEN}[+] Comparing started on $ip [+]"
+	hash1=$(cat $ip/$ip.initial.Full.txt | grep -E '/tcp|/udp' | md5sum | cut -d " " -f1)
+        hash2=$(cat $ip/$ip.post.Full.txt | grep -E '/tcp|/udp' | md5sum | cut -d " " -f1)
+	initialPorts=$(cat $ip/$ip.initial.Full.txt | grep -E '/tcp|/udp' | cut -d "/" -f1 | tr '\n' ',' | sed 's/.$//')
+        postPorts=$(cat $ip/$ip.post.Full.txt | grep -E '/tcp|/udp' | cut -d "/" -f1 | tr '\n' ',' | sed 's/.$//')
         if [ $hash1 != $hash2 ]
         then
-                echo -e "${GREEN}[+] Changes detected on this ip: $ip [+]"
+                echo -e "${GREEN}[-] Changes detected on this ip: $ip [-]"
                 echo -e "${YELLOW}[+] Previuos port(s): $initialPorts [+]"
                 echo -e "${YELLOW}[+] Current port(s): $postPorts [+]"
                 message="Change(s) detected on this ip: $ip, Previous port(s): $initialPorts, Current port(s): $postPorts"
@@ -44,6 +52,7 @@ do
                 sendMail
         fi
 done
+
 }
 
 sendMail(){
@@ -124,9 +133,11 @@ then
 else
         while true
         do
-                initialScan
-                sleep 7200
-                postScan
+	        initialScan
+		sleep 7200
+		postScan
+		sleep 7200
+		compare
         done
 fi
 
